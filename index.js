@@ -1,6 +1,7 @@
 'use strict';
 
 const functions = require('@google-cloud/functions-framework');
+const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const { scrape, ScrapeError } = require('./scraper');
@@ -45,4 +46,21 @@ function createHandler(scrapeSchedule = scrape) {
 
 const app = createHandler();
 functions.http('app', app);
-module.exports = { app, createHandler };
+
+// Vercel loads the default Express export; Google keeps the registered HTTP handler.
+const server = express();
+server.disable('x-powered-by');
+server.use(express.json({ limit: '4kb' }));
+server.use(app);
+server.use((error, req, res, next) => {
+  if (error.type === 'entity.parse.failed' || error.type === 'entity.too.large') {
+    return res.status(error.status).json({
+      error: error.type === 'entity.too.large' ? 'The request is too large.' : 'Send a valid JSON body with a url field.',
+    });
+  }
+  return next(error);
+});
+
+module.exports = server;
+module.exports.app = app;
+module.exports.createHandler = createHandler;

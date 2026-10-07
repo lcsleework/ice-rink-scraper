@@ -1,6 +1,9 @@
 .gcloudignore
 .git/
 .gitignore
+.vercel/
+.vercelignore
+vercel.json
 node_modules/
 .discovery/
 .env

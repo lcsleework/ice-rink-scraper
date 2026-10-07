@@ -2,16 +2,20 @@
   "name": "ice-rink-scraper",
   "version": "1.0.0",
   "private": true,
-  "description": "Acuity ice rink schedule export as a Node.js 22 Google Cloud Function",
+  "description": "Acuity ice rink schedule export for Node.js 22 on Google Cloud Functions or Vercel",
+  "type": "commonjs",
   "main": "index.js",
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "start": "functions-framework --target=app --port=8080",
     "test": "node --test",
     "scrape": "node scripts/scrape.js"
   },
   "dependencies": {
-    "@google-cloud/functions-framework": "5.0.5"
+    "@google-cloud/functions-framework": "5.0.5",
+    "express": "5.2.1"
   },
   "overrides": {
     "cloudevents": {

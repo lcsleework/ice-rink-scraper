@@ -1,6 +1,6 @@
 # Ice Rink Schedule Exporter
 
-A Node.js 22 HTTP Google Cloud Function with a small web page: paste an Acuity scheduling link, scrape its published sessions, and download a JSON array. The source, lockfile, tests, and deployment command are included.
+A Node.js 22 application for Google Cloud Functions or Vercel with a small web page: paste an Acuity scheduling link, scrape its published sessions, and download a JSON array. The source, lockfile, tests, and deployment configuration are included.
 
 ## Run locally
 
@@ -80,7 +80,7 @@ The HTTP response follows the plan's envelope:
 }
 ```
 
-The page downloads only `events`, without the envelope. Errors return `{ "error": "..." }`: invalid input is 400, unsupported selection is 422, concurrent requests are 429, upstream failures are 502/503, and the overall deadline is 504. Unsupported media types are 415. Malformed JSON is rejected by the Functions Framework before the handler. Failed scrapes do not return partial event lists.
+The page downloads only `events`, without the envelope. Errors return `{ "error": "..." }`: invalid input is 400, unsupported selection is 422, concurrent requests are 429, upstream failures are 502/503, and the overall deadline is 504. Unsupported media types are 415. On Google Cloud, malformed JSON is rejected by the Functions Framework before the handler. The Vercel adapter returns JSON errors for malformed bodies (400) and bodies above 4 KiB (413). Failed scrapes do not return partial event lists.
 
 Programmatic use:
 
@@ -134,6 +134,28 @@ Consequently, the scraper checks every month intersecting the requested window, 
 
 These are undocumented public scheduler endpoints, not Acuity's authenticated developer API. If Acuity changes them, update `API_BASE`, the `json('month', ...)`/`json('times', ...)` parameters and response validation in `scraper.js`. If bootstrap metadata changes, update `readBusiness()`/`getTargets()`. Recheck DevTools before changing assumptions, then run `npm test` and compare a live export against the page. There are no production DOM selectors or Chromium dependencies to update. A browser fallback is not included; unexpected formats produce an explicit failure.
 
+## Deploy to Vercel
+
+The repository includes a [Vercel-compatible Express export](https://vercel.com/docs/frameworks/backend/express) in `index.js` and a `vercel.json` configuration. Google Cloud's named `app` handler remains available, and `npm start` still runs the Functions Framework locally.
+
+1. Commit and push the project changes to your Git repository.
+2. In Vercel, choose **Add New > Project** and import that repository.
+3. Set **Framework Preset** to **Express** and **Root Directory** to the directory containing `package.json`. Leave build and output overrides unset; there is no frontend compilation step.
+4. Use **Node.js 22.x** (already specified in `package.json`) and keep **Fluid compute enabled**. No environment variables are required.
+5. Click **Deploy**, open the generated root URL, and test **Scrape schedule > Download JSON**.
+
+`vercel.json` sets a [180-second function duration](https://vercel.com/docs/functions/configuring-functions/duration) around the scraper's 150-second deadline and explicitly includes `public/index.html` in the function bundle. The Express preset supplies routing for `/` and `/scrape`; no custom rewrites or `api/` directory are needed. Vercel also serves files in `public/` as static assets.
+
+For CLI deployment, from the project root:
+
+```sh
+npx vercel@latest
+```
+
+Follow the login/project prompts to create a preview deployment. Once checked, deploy production with `npx vercel@latest --prod`. `.vercelignore` excludes local discovery files, dependencies, tests, CLI scripts and the handoff ZIP. `.vercel/` is excluded from Git and Google Cloud uploads.
+
+The Vercel export and Google Functions Framework are covered by local HTTP integration tests. A hosted Vercel deployment has not been performed; the final smoke test is the deployment step above.
+
 ## Deploy to Google Cloud Functions, second generation
 
 Prerequisites: the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), a billed Google Cloud project, and permission to enable services, deploy functions, and set invocation access. [Node.js 22 is a supported runtime](https://docs.cloud.google.com/functions/docs/runtime-support).
@@ -166,7 +188,7 @@ The command creates a public MVP endpoint. Maximum instances and one job per ins
 
 ## Verification
 
-`npm test` runs 20 offline tests using Node's built-in test runner. They cover URL validation and redirects, selected appointment scope, date boundaries, a UTC/local-date mismatch, year rollover, daylight saving, sorting/deduplication, hidden/missing/zero spaces, empty months, bounded retries, failures without partial results, response limits, cancellation, and HTTP routing/concurrency.
+`npm test` runs 23 offline tests using Node's built-in test runner. They cover URL validation and redirects, selected appointment scope, date boundaries, a UTC/local-date mismatch, year rollover, daylight saving, sorting/deduplication, hidden/missing/zero spaces, empty months, bounded retries, failures without partial results, response limits, cancellation, and HTTP routing/concurrency. Integration tests exercise the Vercel Express export and Google's registered function over real local HTTP connections, including JSON parsing and invalid request bodies.
 
 Live checks completed on October 7, 2026 with Node.js 22.23.2:
 
@@ -181,13 +203,15 @@ Availability counts are a snapshot and will change as people book. Offline tests
 ## Files
 
 ```text
-index.js              HTTP function, validation and routing
+index.js              Google HTTP handler and Vercel Express export
+vercel.json           Express preset, duration and bundled HTML
+.vercelignore         Files excluded from Vercel CLI uploads
 scraper.js            Public availability requests and event normalization
 validate.js           Schedule URL allowlist and selection parsing
 public/index.html     Responsive UI, preview and JSON download
 scripts/scrape.js      Standalone CLI using the same scraper
 test/                 Offline regression tests
-package.json          Node.js 22 runtime and Functions Framework dependency
+package.json          Node.js 22, Express and Functions Framework dependencies
 package-lock.json     Reproducible dependency versions
 plan.md               Original implementation plan
 ```
