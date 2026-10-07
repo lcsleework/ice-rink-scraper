@@ -1,0 +1,12 @@
+.gcloudignore
+.git/
+.gitignore
+node_modules/
+.discovery/
+.env
+test/
+scripts/
+events-*.json
+*.log
+coverage/
+ice-rink-scraper.zip
