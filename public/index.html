@@ -61,7 +61,7 @@
         <label for="schedule-url">Acuity scheduling link</label>
         <div class="input-row">
           <input id="schedule-url" name="url" type="url" required maxlength="2048" autocomplete="off" spellcheck="false" aria-describedby="url-help" value="https://app.acuityscheduling.com/schedule/abdd2b57/appointment/14752819/calendar/7377344">
-          <!-- <button id="scrape-button" type="submit">Scrape schedule <span aria-hidden="true">↗</span></button> -->
+          <button id="scrapebutton" type="submit">Scrape schedule <span aria-hidden="true">↗</span></button>
         </div>
         <p class="help" id="url-help">Accepts app.acuityscheduling.com and Acuity .as.me schedule links.</p>
         <div class="facts">
@@ -84,7 +84,7 @@
     'use strict';
     const form = document.getElementById('scrape-form');
     const input = document.getElementById('schedule-url');
-    const submit = document.getElementById('scrape-button');
+   
     const status = document.getElementById('status');
     const results = document.getElementById('results');
     let events = null;
