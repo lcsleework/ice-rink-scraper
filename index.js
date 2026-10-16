@@ -2,12 +2,10 @@
 
 const functions = require('@google-cloud/functions-framework');
 const express = require('express');
-const fs = require('node:fs');
-const path = require('node:path');
 const { scrape, ScrapeError } = require('./scraper');
 const { validateUrl } = require('./validate');
 
-const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+const DEFAULT_URL = 'https://app.acuityscheduling.com/schedule/abdd2b57/appointment/14752819/calendar/7377344';
 
 function createHandler(scrapeSchedule = scrape) {
   let busy = false;
@@ -15,16 +13,21 @@ function createHandler(scrapeSchedule = scrape) {
     res.set('Cache-Control', 'no-store');
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'no-referrer');
-    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    res.set('Content-Security-Policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     const route = req.path.replace(/\/$/, '') || '/';
-    if ((req.method === 'GET' || req.method === 'HEAD') && route === '/') {
-      return res.status(200).type('html').send(html);
+    if (route !== '/' && route !== '/scrape') return res.status(404).json({ error: 'Not found.' });
+    const isGet = req.method === 'GET';
+    if (!isGet && !(route === '/scrape' && req.method === 'POST')) {
+      return res.set('Allow', route === '/' ? 'GET' : 'GET, POST').status(405).json({
+        error: route === '/' ? 'Use GET to scrape a schedule.' : 'Use GET or POST to scrape a schedule.',
+      });
     }
-    if (route !== '/scrape') return res.status(404).json({ error: 'Not found.' });
-    if (req.method !== 'POST') return res.set('Allow', 'POST').status(405).json({ error: 'Use POST to scrape a schedule.' });
-    if (!req.is('application/json')) return res.status(415).json({ error: 'Send a JSON body with a url field.' });
-    if (Number(req.get('content-length')) > 4096) return res.status(413).json({ error: 'The request is too large.' });
-    const check = validateUrl(req.body?.url);
+    if (!isGet) {
+      if (!req.is('application/json')) return res.status(415).json({ error: 'Send a JSON body with a url field.' });
+      if (Number(req.get('content-length')) > 4096) return res.status(413).json({ error: 'The request is too large.' });
+    }
+    const url = isGet ? (req.query?.url === undefined ? DEFAULT_URL : req.query.url) : req.body?.url;
+    const check = validateUrl(url);
     if (!check.ok) return res.status(400).json({ error: check.message });
     if (busy) return res.set('Retry-After', '5').status(429).json({ error: 'A scrape is already running. Please try again shortly.' });
     busy = true;
@@ -46,6 +49,8 @@ function createHandler(scrapeSchedule = scrape) {
 
 const app = createHandler();
 functions.http('app', app);
+// Match the entry point configured on the existing Cloud Run service.
+functions.http('getRocketIce_StickPuck2', app);
 
 // Vercel loads the default Express export; Google keeps the registered HTTP handler.
 const server = express();

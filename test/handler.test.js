@@ -21,25 +21,55 @@ function request(overrides = {}) {
   return { path: '/scrape', method: 'POST', body: { url: URL }, is: type => type === 'application/json', get: () => undefined, ...overrides };
 }
 
-test('serves the UI and returns the documented API envelope', async () => {
+test('GET without a URL scrapes the default Rocket Ice schedule and returns JSON', async () => {
+  const handler = createHandler(async (url, days, { signal }) => {
+    assert.equal(url, 'https://app.acuityscheduling.com/schedule/abdd2b57/appointment/14752819/calendar/7377344');
+    assert.equal(days, 60);
+    assert.equal(signal.aborted, false);
+    return [];
+  });
+  for (const path of ['/', '/scrape', '/scrape/']) {
+    const res = response();
+    await handler(request({ path, method: 'GET', body: undefined, is: () => false }), res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { count: 0, events: [] });
+    assert.equal(res.headers['Cache-Control'], 'no-store');
+  }
+});
+
+test('GET query URLs and POST bodies return the same API envelope', async () => {
   const events = [{ eventType: 'stick & puck', eventDate: 'October 18, 2026', eventTime: '7:30 AM - 8:30 AM', spotsLeft: 8 }];
   const handler = createHandler(async (url, days, { signal }) => { assert.equal(url, URL); assert.equal(days, 60); assert.ok(signal instanceof AbortSignal); return events; });
-  const ui = response();
-  await handler(request({ path: '/', method: 'GET' }), ui);
-  assert.match(ui.body, /Acuity scheduling link/);
-  const res = response();
-  await handler(request(), res);
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { count: 1, events });
+  for (const overrides of [{}, { path: '/', method: 'GET', query: { url: URL }, body: undefined }, { method: 'GET', query: { url: URL }, body: undefined }]) {
+    const res = response();
+    await handler(request(overrides), res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { count: 1, events });
+  }
 });
 
 test('validates routes, methods, content type and body before scraping', async () => {
   const handler = createHandler(() => assert.fail('scraper must not be called'));
-  for (const [overrides, status] of [[{ path: '/other' }, 404], [{ method: 'GET' }, 405], [{ is: () => false }, 415], [{ get: () => '5000' }, 413], [{ body: {} }, 400], [{ body: { url: 'https://example.com' } }, 400]]) {
+  for (const [overrides, status, allow] of [
+    [{ path: '/other' }, 404],
+    [{ path: '/', method: 'POST' }, 405, 'GET'],
+    [{ method: 'PUT' }, 405, 'GET, POST'],
+    [{ path: '/', method: 'HEAD' }, 405, 'GET'],
+    [{ method: 'HEAD' }, 405, 'GET, POST'],
+    [{ is: () => false }, 415],
+    [{ get: () => '5000' }, 413],
+    [{ body: {} }, 400],
+    [{ body: { url: 'https://example.com' } }, 400],
+    [{ method: 'GET', query: { url: 'https://example.com' } }, 400],
+    [{ method: 'GET', query: { url: '' } }, 400],
+    [{ method: 'GET', query: { url: [URL, URL] } }, 400],
+    [{ method: 'GET', query: { url: { nested: URL } } }, 400],
+  ]) {
     const res = response();
     await handler(request(overrides), res);
     assert.equal(res.statusCode, status);
     assert.equal(typeof res.body.error, 'string');
+    if (allow) assert.equal(res.headers.Allow, allow);
   }
 });
 
@@ -48,14 +78,14 @@ test('limits concurrent jobs and releases the slot for consecutive runs', async 
   let count = 0;
   const handler = createHandler(async () => { count++; if (count === 1) await new Promise(resolve => { finish = resolve; }); return []; });
   const first = response();
-  const running = handler(request(), first);
+  const running = handler(request({ path: '/', method: 'GET' }), first);
   const second = response();
   await handler(request(), second);
   assert.equal(second.statusCode, 429);
   finish();
   await running;
   const third = response();
-  await handler(request(), third);
+  await handler(request({ method: 'GET' }), third);
   assert.equal(third.statusCode, 200);
   assert.deepEqual(third.body, { count: 0, events: [] });
 });

@@ -3,8 +3,7 @@
   "framework": "express",
   "functions": {
     "index.js": {
-      "maxDuration": 180,
-      "includeFiles": "public/index.html"
+      "maxDuration": 180
     }
   }
 }
